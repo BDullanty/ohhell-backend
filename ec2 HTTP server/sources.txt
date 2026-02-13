@@ -1,0 +1,16 @@
+GameHandlers\Card.java
+GameHandlers\Deck.java
+GameHandlers\Game.java
+GameHandlers\GameHandler.java
+GameHandlers\Player.java
+GameHandlers\State.java
+GameHandlers\Suits.java
+GameHandlers\User.java
+HTTPHandlers\AWSSigner.java
+HTTPHandlers\Connect.java
+HTTPHandlers\Disconnect.java
+HTTPHandlers\ExchangeHandler.java
+HTTPHandlers\HTTPServer.java
+HTTPHandlers\PostAllGamesInfo.java
+HTTPHandlers\PostAllUsersToLobby.java
+HTTPHandlers\PostUserInfo.java
