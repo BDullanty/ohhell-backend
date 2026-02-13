@@ -1,0 +1,3 @@
+ec2 HTTP server/build/
+ec2 HTTP server/ohhell-server.jar
+*.class
