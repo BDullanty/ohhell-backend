@@ -2,38 +2,52 @@ package GameHandlers;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Stack;
+import java.util.List;
 
 public class Deck {
-    //
-    private Stack<Card> deck;
+    private final List<Card> cards;
 
-
-    public Deck(){
+    public Deck() {
+        this.cards = new ArrayList<>();
         loadDeck();
         shuffle();
     }
 
-    public void shuffle(){
-        Collections.shuffle(deck);
+    private void loadDeck() {
+        cards.clear();
+        for (Suits suit : Suits.values()) {
+            for (int rank = 2; rank <= 14; rank++) {
+                cards.add(new Card(rank, suit));
+            }
+        }
     }
+
+    public void shuffle() {
+        Collections.shuffle(cards);
+    }
+
+    public Card draw() {
+        if (cards.isEmpty()) {
+            return null;
+        }
+        return cards.remove(cards.size() - 1);
+    }
+
+    public int size() {
+        return cards.size();
+    }
+
     @Override
     public String toString() {
-        String returnString = "";
+        StringBuilder builder = new StringBuilder();
         boolean first = true;
-        for (Card card : deck) {
-            if (first) {
-                first = false;
-                returnString += card.toString();
+        for (Card card : cards) {
+            if (!first) {
+                builder.append(", ");
             }
-            returnString += ", " + card.toString();
+            builder.append(card.toString());
+            first = false;
         }
-        return returnString;
-    }
-    private void loadDeck(){
-        this.deck = new Stack<>();
-        for(int i = 1; i <=52;i++){
-            deck.add(new Card(i));
-        }
+        return builder.toString();
     }
 }

@@ -1,14 +1,20 @@
 package HTTPHandlers;
 
+import GameHandlers.GameHandler;
 import GameHandlers.User;
 import com.sun.net.httpserver.HttpExchange;
 import org.json.JSONObject;
 
 import java.io.IOException;
 import java.io.OutputStream;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 public class Connect {
 
+    private static final ScheduledExecutorService CONNECT_EXECUTOR = Executors.newSingleThreadScheduledExecutor();
+    private static final long POST_CONNECT_DELAY_MS = 250;
 
     //Expected String Input:
     //{"action":"something","jwk":"something", "connectionID":"something"}
@@ -27,12 +33,7 @@ public class Connect {
             OutputStream os = exchange.getResponseBody();
             os.write(response.getBytes());
             os.close();
-            //Send this user some info about themselves:
-            PostUserInfo.postUserInfo(connectingPlayer);
-            //Show this user the lobbies:
-            PostAllGamesInfo.postAllGamesToUser(connectingPlayer);
-            //Notify everyone that someone connected:
-            PostAllUsersToLobby.postAllUsersToLobby();
+            schedulePostConnect(connectingPlayer);
 
         } catch (Exception e) {
             //If we failed to get a player properly, return 400
@@ -44,6 +45,28 @@ public class Connect {
             os.close();
         }
         return response;
+    }
+
+    private static void schedulePostConnect(User user) {
+        if (user == null) {
+            return;
+        }
+        CONNECT_EXECUTOR.schedule(() -> {
+            try {
+                if (!user.isOnline()) {
+                    return;
+                }
+                GameHandler.handleUserConnected(user);
+                //Send this user some info about themselves:
+                PostUserInfo.postUserInfo(user);
+                //Show this user the lobbies:
+                PostAllGamesInfo.postAllGamesToUser(user);
+                //Notify everyone that someone connected:
+                PostAllUsersToLobby.postAllUsersToLobby();
+            } catch (Exception e) {
+                System.out.println("Post-connect error: " + e);
+            }
+        }, POST_CONNECT_DELAY_MS, TimeUnit.MILLISECONDS);
     }
 
     public static User getUserFromParsedJWK(JSONObject infoJson) {

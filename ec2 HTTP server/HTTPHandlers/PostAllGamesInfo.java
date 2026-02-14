@@ -14,7 +14,10 @@ public class PostAllGamesInfo {
             AWSSigner.sendSignedMessage(message, lobbyConnections);
             String names = "";
             for(int i = 0; i < lobbyConnections.size();i++){
-                names+= User.getUser(lobbyConnections.get(i)).getUsername()+" ";
+                User user = User.getUser(lobbyConnections.get(i));
+                if (user != null) {
+                    names+= user.getUsername()+" ";
+                }
             }
             System.out.println("Sent " + message + " to lobby players named: "+names);
         } catch (Exception e) {

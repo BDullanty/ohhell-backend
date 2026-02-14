@@ -33,6 +33,7 @@ public class User extends Player{
         return User.connectionList.get(connectionID);
     }
 
+
     public static ArrayList<String> getLobbyConnections() {
         ArrayList<String> connections = new ArrayList<>();
         // for each player in lobby
@@ -84,13 +85,19 @@ public class User extends Player{
         if(p==null) throw new IllegalArgumentException("Player was null");
         if(onlineList.contains(p)) System.out.println("Player was already online.");
         else{
-            p.state= State.LOBBY;
+            if (p.gameID == -1) {
+                p.state = State.LOBBY;
+            }
             User.onlineList.add(p);
         }
 
     }
     public static User removeConnection(String connectionID){
         User user = User.connectionList.get(connectionID);
+        if (user == null) {
+            System.out.println("ConnectionID " + connectionID + " was not found.");
+            return null;
+        }
         user.connectionID.remove(connectionID);
         if(user.connectionID.size()==0){
             user.state= State.OFFLINE;
@@ -117,6 +124,10 @@ public class User extends Player{
 
     public ArrayList<String> getConnections() {
         return this.connectionID;
+    }
+
+    public boolean isOnline() {
+        return this.connectionID != null && !this.connectionID.isEmpty();
     }
 
 

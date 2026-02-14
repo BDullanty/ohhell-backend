@@ -1,7 +1,9 @@
+GameHandlers\Bot.java
 GameHandlers\Card.java
 GameHandlers\Deck.java
 GameHandlers\Game.java
 GameHandlers\GameHandler.java
+GameHandlers\GamePhase.java
 GameHandlers\Player.java
 GameHandlers\State.java
 GameHandlers\Suits.java
@@ -13,4 +15,5 @@ HTTPHandlers\ExchangeHandler.java
 HTTPHandlers\HTTPServer.java
 HTTPHandlers\PostAllGamesInfo.java
 HTTPHandlers\PostAllUsersToLobby.java
+HTTPHandlers\PostGameState.java
 HTTPHandlers\PostUserInfo.java

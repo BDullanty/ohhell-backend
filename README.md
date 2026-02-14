@@ -84,12 +84,15 @@ Routes and HTTP integrations (port 8080):
 - `JoinGame` -> `http://<ec2-ip>:8080/JoinGame`
 - `LeaveGame` -> `http://<ec2-ip>:8080/LeaveGame`
 - `VoteStart` -> `http://<ec2-ip>:8080/VoteStart`
+- `Bet` -> `http://<ec2-ip>:8080/Bet`
 - `PlayCard` -> `http://<ec2-ip>:8080/PlayCard`
 - `ListPlayers` -> `http://<ec2-ip>:8080/ListPlayers` (optional)
 
 Use the request/response templates in `*.txt`, including:
 - `$Connect Request Template.txt`, `$Connect Integration Response.txt`
 - `createGame Request Template.txt`, `createGame Integration Response.txt`
+- `Bet Request Template.txt` for `Bet`
+- `PlayCard Request Template.txt` for `PlayCard`
 - `ListPlayers Request Template.txt`, `ListPlayers Integration Response.txt`
 - `Basic Route Response Template.txt` for generic responses
 

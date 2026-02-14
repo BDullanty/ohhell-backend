@@ -27,6 +27,7 @@ public class HTTPServer {
         server.createContext("/JoinGame", new JoinGameHandler());
         server.createContext("/VoteStart", new StartGameHandler());
         server.createContext("/PlayCard", new PlayCardHandler());
+        server.createContext("/Bet", new BetHandler());
         server.setExecutor(null); // Creates a default executor
         server.start();
         System.out.println("HTTP server started on port 8080");
@@ -54,9 +55,63 @@ public class HTTPServer {
         @Override
         public void handle(HttpExchange exchange) throws IOException {
             String response = "Card Move Received";
-            String requestBody = new String(exchange.getRequestBody().readAllBytes());
-            System.out.println("Received move: " + requestBody);
-            exchange.sendResponseHeaders(200, response.getBytes().length);
+            try {
+                JSONObject infoJson = getInfoJsonFromExchange(exchange);
+                User user = User.getUser(infoJson.getString("connectionID"));
+                if (user == null) {
+                    response = "Unknown connection";
+                    exchange.sendResponseHeaders(400, response.getBytes().length);
+                    OutputStream os = exchange.getResponseBody();
+                    os.write(response.getBytes());
+                    os.close();
+                    return;
+                }
+                String cardKey = "";
+                if (infoJson.has("card")) {
+                    cardKey = infoJson.getString("card");
+                } else if (infoJson.has("Card")) {
+                    cardKey = infoJson.getString("Card");
+                }
+
+                GameHandler.handlePlay(user, cardKey);
+                exchange.sendResponseHeaders(200, response.getBytes().length);
+            } catch (Exception e) {
+                response = "Bad play request";
+                exchange.sendResponseHeaders(400, response.getBytes().length);
+            }
+            OutputStream os = exchange.getResponseBody();
+            os.write(response.getBytes());
+            os.close();
+        }
+    }
+
+    static class BetHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            String response = "Bet Received";
+            try {
+                JSONObject infoJson = getInfoJsonFromExchange(exchange);
+                User user = User.getUser(infoJson.getString("connectionID"));
+                if (user == null) {
+                    response = "Unknown connection";
+                    exchange.sendResponseHeaders(400, response.getBytes().length);
+                    OutputStream os = exchange.getResponseBody();
+                    os.write(response.getBytes());
+                    os.close();
+                    return;
+                }
+                int bet = -1;
+                if (infoJson.has("bet")) {
+                    bet = infoJson.getInt("bet");
+                } else if (infoJson.has("Bet")) {
+                    bet = infoJson.getInt("Bet");
+                }
+                GameHandler.handleBet(user, bet);
+                exchange.sendResponseHeaders(200, response.getBytes().length);
+            } catch (Exception e) {
+                response = "Bad bet request";
+                exchange.sendResponseHeaders(400, response.getBytes().length);
+            }
             OutputStream os = exchange.getResponseBody();
             os.write(response.getBytes());
             os.close();
@@ -73,11 +128,14 @@ public class HTTPServer {
                 JSONObject infoJson= new JSONObject(body);
 
                 User u = User.getUser(infoJson.getString("connectionID"));
+                if (u == null) {
+                    throw new IllegalArgumentException("Unknown connection.");
+                }
                 System.out.println("got user " + u.getUsername() +" and they have a gameID of "+u.getGameID());
                 if(u.getGameID() != -1) {
                     Game oldGame = GameHandler.getGame(u.getGameID());
                     GameHandler.removeUserFromGame(u);
-                    if(oldGame.getPlayers().isEmpty()) GameHandler.end(oldGame);
+                    if(oldGame != null && oldGame.getPlayers().isEmpty()) GameHandler.end(oldGame);
                 }
                 Game game = new Game(u);
                 GameHandler.addGameToLobby(game);
@@ -110,8 +168,14 @@ public class HTTPServer {
                 System.out.println("Game leave body: "+body  );
                 JSONObject infoJson = new JSONObject(body);
                 User u = User.getUser(infoJson.getString("connectionID"));
+                if (u == null) {
+                    throw new IllegalArgumentException("Unknown connection.");
+                }
                 System.out.println("got user " + u.getUsername() +" and they have a gameID of "+u.getGameID());
                 Game game = GameHandler.getGame(u.getGameID());
+                if (game == null) {
+                    throw new IllegalArgumentException("Game not found.");
+                }
 
                 GameHandler.removeUserFromGame(u);
                 if(game.getPlayers().isEmpty()) GameHandler.end(game);
@@ -144,6 +208,12 @@ public class HTTPServer {
                 JSONObject infoJson = new JSONObject(body);
                 User u = User.getUser(infoJson.getString("connectionID"));
                 Game requestGame = GameHandler.getGame(infoJson.getInt("gameID"));
+                if (u == null) {
+                    throw new IllegalArgumentException("Unknown connection.");
+                }
+                if (requestGame == null) {
+                    throw new IllegalArgumentException("Game not found.");
+                }
                 System.out.println("got user " + u.getUsername() +"requesting into game "+requestGame.getGameID()+" and they have a gameID of "+u.getGameID());
                 //check stuff
                 if(!requestGame.getState().equals(State.WAITING)) throw new IllegalAccessError("Game is not joinable.");
@@ -152,7 +222,7 @@ public class HTTPServer {
                 if(u.getGameID() != -1) {
                     Game oldGame = GameHandler.getGame(u.getGameID());
                     GameHandler.removeUserFromGame(u);
-                    if(oldGame.getPlayers().isEmpty()) GameHandler.end(oldGame);
+                    if(oldGame != null && oldGame.getPlayers().isEmpty()) GameHandler.end(oldGame);
                 }
                 GameHandler.addUserToGame(u,requestGame.getGameID());
 
@@ -185,8 +255,14 @@ public class HTTPServer {
                 JSONObject infoJson= new JSONObject(body);
 
                 User requestingUser = User.getUser(infoJson.getString("connectionID"));
+                if (requestingUser == null) {
+                    throw new IllegalArgumentException("Unknown connection.");
+                }
                 //Requires json to have gameID with gameID
                 Game game = GameHandler.getGame(requestingUser.getGameID());
+                if (game == null) {
+                    throw new IllegalArgumentException("Game not found.");
+                }
 
                 System.out.println("Requested game "+game.getGameID()+" which has "+game.getPlayers().size()+" players, by user " + requestingUser.getUsername() );
                 if( game.getState() != State.WAITING){

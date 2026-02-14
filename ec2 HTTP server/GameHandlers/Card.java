@@ -1,39 +1,84 @@
 package GameHandlers;
 
 public class Card {
-    private int ID;
-    private int value;
-    private Enum suit;
+    private final int rank;
+    private final Suits suit;
+    private int playedByIndex = -1;
 
-    public Card(int ID){
-
-        this.ID=ID;
-        this.value = getValueFromID(ID);
-        this.suit = getSuitFromID(ID);
-
+    public Card(int rank, Suits suit) {
+        if (rank < 2 || rank > 14) {
+            throw new IllegalArgumentException("Rank must be between 2 and 14.");
+        }
+        if (suit == null) {
+            throw new IllegalArgumentException("Suit cannot be null.");
+        }
+        this.rank = rank;
+        this.suit = suit;
     }
-    private int getValueFromID(int id){
-        //We have 52 cards from 1-52, with 13 per suit.
-        //this means we can loop from 1-52, having the ID be equal to the number,
-        //The value equal to n%12 (with 12 valued at 12 and 1 valued at 13, (ace high)
-        if(id%12 ==1) return 13;
-        if(id%12 == 0) return 12;
-        return id%12;
+
+    public int getRank() {
+        return rank;
     }
-    private Enum getSuitFromID(int ID){
-        //We have each 13 cards as a suit,
-        if(ID <=13 && ID >=1){
-            return Suits.HEART;
-        } else if(ID>13 && ID <= 26){
-            return Suits.DIAMOND;
-        } else if(ID> 26 && ID<=39 ){
-            return Suits.SPADE;
-        } else{
-            return Suits.CLUB;
+
+    public Suits getSuit() {
+        return suit;
+    }
+
+    public int getPlayedByIndex() {
+        return playedByIndex;
+    }
+
+    public void setPlayedByIndex(int playedByIndex) {
+        this.playedByIndex = playedByIndex;
+    }
+
+    public String getKey() {
+        return rankToKey(rank) + suit.getKeyLetter();
+    }
+
+    public int getTrickValue(Suits trumpSuit, Suits leadSuit) {
+        if (leadSuit != null && trumpSuit != suit && suit != leadSuit) {
+            return 0;
+        }
+        int value = rank;
+        if (trumpSuit != null && suit == trumpSuit) {
+            value += 20;
+        }
+        return value;
+    }
+
+    private static String rankToKey(int rank) {
+        switch (rank) {
+            case 11:
+                return "j";
+            case 12:
+                return "q";
+            case 13:
+                return "k";
+            case 14:
+                return "a";
+            default:
+                return String.valueOf(rank);
         }
     }
+
+    private static String rankToLabel(int rank) {
+        switch (rank) {
+            case 11:
+                return "Jack";
+            case 12:
+                return "Queen";
+            case 13:
+                return "King";
+            case 14:
+                return "Ace";
+            default:
+                return String.valueOf(rank);
+        }
+    }
+
     @Override
-    public String toString(){
-        return value+ " of " + suit.toString().toLowerCase()+"s";
+    public String toString() {
+        return rankToLabel(rank) + " of " + suit.getDisplayName();
     }
 }

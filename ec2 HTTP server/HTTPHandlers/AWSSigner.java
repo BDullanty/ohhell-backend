@@ -1,5 +1,6 @@
 package HTTPHandlers;
 
+import GameHandlers.User;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.io.IOException;
@@ -16,6 +17,7 @@ import java.util.Date;
 import java.util.Locale;
 import java.util.TimeZone;
 import java.time.Instant;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.json.JSONObject;
 
@@ -29,6 +31,7 @@ public class AWSSigner {
     private static final int IMDS_TIMEOUT_MS = 1000;
 
     private static volatile AwsCredentials cachedCredentials;
+    private static final ConcurrentHashMap<String, Integer> goneCounts = new ConcurrentHashMap<>();
 
     private static class AwsCredentials {
         final String accessKeyId;
@@ -112,12 +115,25 @@ public class AWSSigner {
             int responseCode = con.getResponseCode();
             if (responseCode == HttpURLConnection.HTTP_OK) {
                 String responseBody = new String(con.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-
+                goneCounts.remove(connections.get(i));
             } else {
-
-                System.out.println("Error: " + responseCode + " " + con.getResponseMessage() );
-                String errorBody = new String(con.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
-                System.out.println("Error body:"+errorBody);
+                System.out.println("Error: " + responseCode + " " + con.getResponseMessage());
+                if (responseCode == HttpURLConnection.HTTP_GONE) {
+                    String connectionId = connections.get(i);
+                    int seen = goneCounts.getOrDefault(connectionId, 0) + 1;
+                    goneCounts.put(connectionId, seen);
+                    if (seen >= 2) {
+                        System.out.println("Connection gone: " + connectionId);
+                        goneCounts.remove(connectionId);
+                        User.removeConnection(connectionId);
+                    } else {
+                        System.out.println("Connection gone (retrying later): " + connectionId);
+                    }
+                }
+                if (con.getErrorStream() != null) {
+                    String errorBody = new String(con.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
+                    System.out.println("Error body:" + errorBody);
+                }
             }
         }
     }

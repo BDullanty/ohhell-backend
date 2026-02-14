@@ -15,7 +15,11 @@ public class Disconnect {
     public static void disconnectPlayer(HttpExchange exchange)throws IOException {
         try{
             JSONObject infoJson = ExchangeHandler.getInfoJsonFromExchange(exchange);
-            User.removeConnection(infoJson.getString("connectionID"));
+            User user = User.removeConnection(infoJson.getString("connectionID"));
+            if (user == null) {
+                return;
+            }
+            GameHandlers.GameHandler.handleUserDisconnected(user);
         }catch (Exception e){
             System.out.println("Error in disconnect: "+e);
         }
