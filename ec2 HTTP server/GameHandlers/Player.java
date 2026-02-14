@@ -79,6 +79,14 @@ public abstract class Player {
         this.handsWon = 0;
     }
 
+    public void resetForGame() {
+        this.hand.clear();
+        this.bet = -1;
+        this.handsWon = 0;
+        this.score = 0;
+        this.hasVoted = false;
+    }
+
     public int getHandsWon() {
         return handsWon;
     }

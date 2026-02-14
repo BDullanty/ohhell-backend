@@ -158,6 +158,9 @@ public class Game {
             return;
         }
         fillBots();
+        for (Player player : players) {
+            player.resetForGame();
+        }
         setState(State.INGAME);
         phase = GamePhase.BETTING;
         round = 1;
