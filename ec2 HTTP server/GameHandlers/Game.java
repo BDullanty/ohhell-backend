@@ -112,6 +112,10 @@ public class Game {
         return currentTurnIndex;
     }
 
+    public synchronized int getInitiatorIndex() {
+        return initiatorIndex;
+    }
+
     public synchronized int getLastTrickWinnerIndex() {
         return lastTrickWinnerIndex;
     }

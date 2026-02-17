@@ -60,6 +60,9 @@ public class PostGameState {
 
         JSONObject turn = new JSONObject();
         int turnIndex = game.getCurrentTurnIndex();
+        int bettingLeadSeat = game.getInitiatorIndex();
+        payload.put("bettingLeadSeat", bettingLeadSeat);
+        payload.put("bidLeadSeat", bettingLeadSeat);
         if (turnIndex >= 0 && turnIndex < game.getPlayers().size()) {
             Player current = game.getPlayers().get(turnIndex);
             turn.put("seat", current.getSeatIndex());
