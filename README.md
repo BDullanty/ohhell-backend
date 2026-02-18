@@ -55,6 +55,46 @@ java -cp "ohhell-server.jar:lib/json-20240303.jar" HTTPHandlers.HTTPServer
 5. Start the server:
    - `java -cp "/opt/ohhell/ohhell-server.jar:/opt/ohhell/lib/json-20240303.jar" HTTPHandlers.HTTPServer`
 
+## Remote Start/Stop (from Windows PowerShell)
+Use these from your local machine to control the server process on EC2.
+
+Set variables once:
+```powershell
+$KeyPath = "C:\Users\bdull\Documents\OH HELL\EC2 Keypair.pem"
+$Remote = "ec2-user@204.236.160.128"
+$RemoteJar = "/opt/ohhell/ohhell-server-java17.jar"
+$RemoteClasspath = "$RemoteJar:/opt/ohhell/lib/json-20240303.jar"
+```
+
+Upload latest local build and overwrite fixed remote jar path:
+```powershell
+scp -i "$KeyPath" "$((Get-ChildItem 'C:\Users\bdull\RubymineProjects\ohhell-backend\ec2 HTTP server\ohhell-server-java17-v*.jar' | Sort-Object LastWriteTime | Select-Object -Last 1).FullName)" "$Remote:$RemoteJar"
+```
+
+Start (or restart) server:
+```powershell
+ssh -i "$KeyPath" $Remote "mkdir -p /opt/ohhell/logs; pkill -f 'HTTPHandlers.HTTPServer' || true; nohup java -cp '$RemoteClasspath' HTTPHandlers.HTTPServer > /opt/ohhell/logs/server.log 2>&1 < /dev/null & echo \$! > /opt/ohhell/ohhell.pid"
+```
+
+Stop server:
+```powershell
+ssh -i "$KeyPath" $Remote "if [ -f /opt/ohhell/ohhell.pid ]; then kill \$(cat /opt/ohhell/ohhell.pid) && rm -f /opt/ohhell/ohhell.pid; else pkill -f 'HTTPHandlers.HTTPServer' || true; fi"
+```
+
+Check status:
+```powershell
+ssh -i "$KeyPath" $Remote "if [ -f /opt/ohhell/ohhell.pid ] && ps -p \$(cat /opt/ohhell/ohhell.pid) > /dev/null; then echo RUNNING pid=\$(cat /opt/ohhell/ohhell.pid); else pgrep -af 'HTTPHandlers.HTTPServer' || echo STOPPED; fi"
+```
+
+Tail logs:
+```powershell
+ssh -i "$KeyPath" $Remote "tail -n 120 /opt/ohhell/logs/server.log"
+```
+
+Notes:
+- Update `$RemoteJar` when you deploy a new jar version.
+- `pkill` in the start command ensures only one game server process is running.
+
 Optional systemd service:
 ```ini
 [Unit]

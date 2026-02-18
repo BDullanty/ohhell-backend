@@ -3,28 +3,26 @@ package GameHandlers;
 import HTTPHandlers.PostAllGamesInfo;
 import HTTPHandlers.PostGameState;
 import HTTPHandlers.PostUserInfo;
+import HTTPHandlers.ServerLog;
+import org.json.JSONObject;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 
 public class GameHandler {
+    private static final String SCOPE = "GameHandler";
     private static final HashMap<Integer, Game> games = new HashMap<>();
     private static final HashMap<Integer, Game> history = new HashMap<>();
 
     public static Game getGame(int gameID) {
-        Game resultGame = games.get(gameID);
-        if (resultGame == null) {
-            return null;
-        }
-        System.out.println("Result from getGame: passed id: " + gameID + " resultantID: " + resultGame.getGameID());
-        return resultGame;
+        return games.get(gameID);
     }
 
     public static void start(Game game) {
         if (game == null) {
             return;
         }
-        System.out.println("Starting Game");
+        ServerLog.info(SCOPE, "Starting game " + game.getGameID());
         game.startGame();
         PostAllGamesInfo.postAllGamesToLobby();
     }
@@ -52,7 +50,7 @@ public class GameHandler {
     }
 
     public static void addGameToLobby(Game game) {
-        System.out.println("Moving game to lobby: " + game.getGameID());
+        ServerLog.info(SCOPE, "Adding game " + game.getGameID() + " to lobby");
         games.put(game.getGameID(), game);
         game.setState(State.WAITING);
     }
@@ -61,7 +59,7 @@ public class GameHandler {
         if (game == null) {
             return;
         }
-        System.out.println("Ending game " + game.getGameID());
+        ServerLog.info(SCOPE, "Ending game " + game.getGameID());
         boolean doHistoryStore = true;
         if (game.getState().equals(State.WAITING)) {
             doHistoryStore = false;
@@ -106,7 +104,7 @@ public class GameHandler {
         u.setGameID(-1);
         u.setState(State.LOBBY);
         u.unsetVote();
-        System.out.println(u.getUsername() + " left game " + game.getGameID());
+        ServerLog.info(SCOPE, u.getUsername() + " left game " + game.getGameID());
         if (u instanceof User) {
             PostUserInfo.postUserInfo((User) u);
         }
@@ -119,48 +117,52 @@ public class GameHandler {
         }
         game.addPlayer(u);
         u.setState(State.WAITING);
-        System.out.print(u.getUsername() + " added to game " + game.getGameID());
+        ServerLog.info(SCOPE, u.getUsername() + " added to game " + game.getGameID());
     }
 
     public static boolean everyoneVotedStart(Game game) {
+        if (game == null) {
+            return false;
+        }
         boolean ready = true;
         for (Player p : game.getPlayers()) {
             if (!p.hasVoted()) {
-                System.out.println("Still waiting for vote from " + p.getUsername() + " in game " + game.getGameID());
+                ServerLog.info(
+                    SCOPE,
+                    "Still waiting for vote from " + p.getUsername() + " in game " + game.getGameID()
+                );
                 ready = false;
             } else {
-                System.out.println(p.getUsername() + " has voted");
+                ServerLog.info(SCOPE, p.getUsername() + " has voted");
             }
         }
         return ready;
     }
 
-    public static String getLobbyGamesJson() {
-        System.out.println("There are " + games.size() + " lobbies");
-        String gameString = "{";
-        int tracker = 0;
+    public static JSONObject getLobbyGames() {
+        JSONObject lobby = new JSONObject();
         for (Game game : games.values()) {
-            tracker += 1;
             ArrayList<Player> players = game.getPlayers();
-            gameString += " \"" + game.getGameID() + "\" : {";
-            gameString += "\"host\":\"" + players.get(0).username + "\",";
-            int size = players.size();
-            for (int j = 0; j < size; j++) {
-                gameString += "\"player" + (j + 1) + "\":\"" + players.get(j).username + "\", ";
+            JSONObject gameJson = new JSONObject();
+            String host = players.isEmpty() ? "Empty" : players.get(0).getUsername();
+            gameJson.put("host", host);
+            for (int i = 0; i < 5; i++) {
+                boolean hasPlayer = i < players.size();
+                String playerName = hasPlayer ? players.get(i).getUsername() : "Empty";
+                boolean voted = hasPlayer && players.get(i).hasVoted();
+                gameJson.put("player" + (i + 1), playerName);
+                gameJson.put("player" + (i + 1) + "Voted", voted);
             }
-            for (int k = 1; k <= 5 - size; k++) {
-                gameString += "\"player" + (k + size) + "\":\"Empty\", ";
-            }
-            gameString += "\"state\":\"" + game.getState() + "\",";
-            gameString += "\"round\":\"" + game.getRound() + "\"";
-            if (tracker != games.size()) {
-                gameString += "},";
-            } else {
-                gameString += "}";
-            }
+            gameJson.put("hostVoted", !players.isEmpty() && players.get(0).hasVoted());
+            gameJson.put("state", game.getState().toString());
+            gameJson.put("round", game.getRound());
+            lobby.put(String.valueOf(game.getGameID()), gameJson);
         }
-        gameString += "}";
-        return gameString;
+        return lobby;
+    }
+
+    public static String getLobbyGamesJson() {
+        return getLobbyGames().toString();
     }
 
     public static void handleUserConnected(User user) {

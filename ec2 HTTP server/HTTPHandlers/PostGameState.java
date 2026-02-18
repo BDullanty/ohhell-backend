@@ -11,6 +11,8 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 public class PostGameState {
+    private static final String SCOPE = "PostGameState";
+
     public static void postGameState(Game game) {
         if (game == null) {
             return;
@@ -27,7 +29,11 @@ public class PostGameState {
                 JSONObject payload = buildPayload(game, user);
                 AWSSigner.sendSignedMessage(payload.toString(), user.getConnections());
             } catch (Exception e) {
-                System.out.println("Failed to post game state: " + e);
+                ServerLog.error(
+                    SCOPE,
+                    "Failed posting game state for user " + user.getUsername() + " in game " + game.getGameID(),
+                    e
+                );
             }
         }
     }
@@ -42,13 +48,32 @@ public class PostGameState {
         payload.put("cardsDealt", game.getCardsDealt());
         payload.put("actionLocked", game.isActionLocked());
         payload.put("trickCounter", game.getTrickCounter());
+        payload.put("turnTimeLimitSeconds", game.getTurnTimeLimitSeconds());
+        long turnDeadlineMs = game.getTurnDeadlineMs();
+        payload.put("turnDeadlineMs", turnDeadlineMs > 0 ? turnDeadlineMs : JSONObject.NULL);
 
         Card trump = game.getTrump();
         payload.put("trump", trump != null ? trump.getKey() : "");
 
         Suits leadSuit = game.getLeadSuit();
         payload.put("leadSuit", leadSuit != null ? leadSuit.getDisplayName() : "");
+        payload.put("table", buildTableJson(game));
+        JSONObject turn = buildTurnJson(game);
+        payload.put("turn", turn != null ? turn : JSONObject.NULL);
+        payload.put("bettingLeadSeat", game.getInitiatorIndex());
 
+        int lastWinner = game.getLastTrickWinnerIndex();
+        payload.put("lastTrickWinner", lastWinner >= 0 ? lastWinner : JSONObject.NULL);
+        payload.put("players", buildPlayersJson(game));
+
+        payload.put("yourSeat", user.getSeatIndex());
+        payload.put("yourBet", user.hasPlacedBet() ? user.getBet() : JSONObject.NULL);
+        payload.put("hand", buildHandJson(user));
+
+        return payload;
+    }
+
+    private static JSONArray buildTableJson(Game game) {
         JSONArray table = new JSONArray();
         for (Card card : game.getTableCards()) {
             JSONObject entry = new JSONObject();
@@ -56,23 +81,23 @@ public class PostGameState {
             entry.put("seat", card.getPlayedByIndex());
             table.put(entry);
         }
-        payload.put("table", table);
+        return table;
+    }
 
-        JSONObject turn = new JSONObject();
+    private static JSONObject buildTurnJson(Game game) {
         int turnIndex = game.getCurrentTurnIndex();
-        int bettingLeadSeat = game.getInitiatorIndex();
-        payload.put("bettingLeadSeat", bettingLeadSeat);
-        payload.put("bidLeadSeat", bettingLeadSeat);
-        if (turnIndex >= 0 && turnIndex < game.getPlayers().size()) {
-            Player current = game.getPlayers().get(turnIndex);
-            turn.put("seat", current.getSeatIndex());
-            turn.put("name", current.getUsername());
-            turn.put("type", game.getPhase() == GamePhase.BETTING ? "BET" : "PLAY");
+        if (turnIndex < 0 || turnIndex >= game.getPlayers().size()) {
+            return null;
         }
-        payload.put("turn", turn);
-        int lastWinner = game.getLastTrickWinnerIndex();
-        payload.put("lastTrickWinner", lastWinner >= 0 ? lastWinner : JSONObject.NULL);
+        Player current = game.getPlayers().get(turnIndex);
+        JSONObject turn = new JSONObject();
+        turn.put("seat", current.getSeatIndex());
+        turn.put("name", current.getUsername());
+        turn.put("type", game.getPhase() == GamePhase.BETTING ? "BET" : "PLAY");
+        return turn;
+    }
 
+    private static JSONArray buildPlayersJson(Game game) {
         JSONArray players = new JSONArray();
         for (Player player : game.getPlayers()) {
             JSONObject playerJson = new JSONObject();
@@ -86,16 +111,14 @@ public class PostGameState {
             playerJson.put("cardsInHand", player.getHand().size());
             players.put(playerJson);
         }
-        payload.put("players", players);
+        return players;
+    }
 
-        payload.put("yourSeat", user.getSeatIndex());
-        payload.put("yourBet", user.hasPlacedBet() ? user.getBet() : JSONObject.NULL);
+    private static JSONArray buildHandJson(User user) {
         JSONArray hand = new JSONArray();
         for (Card card : user.getHand()) {
             hand.put(card.getKey());
         }
-        payload.put("hand", hand);
-
-        return payload;
+        return hand;
     }
 }

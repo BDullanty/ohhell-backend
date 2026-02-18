@@ -22,6 +22,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.json.JSONObject;
 
 public class AWSSigner {
+    private static final String SCOPE = "AWSSigner";
     private static final String RESTAPIHOST = "sbokdz62pc.execute-api.us-west-1.amazonaws.com";
     private static final String STAGE = "production";
     private static final String METHOD = "POST";
@@ -80,10 +81,9 @@ public class AWSSigner {
 
 
         // Add signing information to the request
-        for(int i = 0; i < connections.size(); i++) {
-
-            String canonicalUri = restApiPath + connections.get(i);
-            String encodedUri = encodedRestApiPath + URLEncoder.encode(connections.get(i), StandardCharsets.UTF_8);
+        for (String connectionId : connections) {
+            String canonicalUri = restApiPath + connectionId;
+            String encodedUri = encodedRestApiPath + URLEncoder.encode(connectionId, StandardCharsets.UTF_8);
             String canonicalRequest = METHOD + "\n" + encodedUri+ "\n" + canonicalQuerystring + "\n" + canonicalHeaders + "\n" + signedHeaders + "\n" + payloadHash;
             String hashedCanonicalRequest = sha256Hex(canonicalRequest);
             String stringToSign = ALGORITHM + "\n" + amzDate + "\n" + credentialScope + "\n" + hashedCanonicalRequest;
@@ -93,46 +93,50 @@ public class AWSSigner {
             String signature = hmacSha256Hex(signingKey, stringToSign);
             String authorizationHeader = ALGORITHM + " " + "Credential=" + credentials.accessKeyId + "/" + credentialScope + ", " + "SignedHeaders=" + signedHeaders + ", " + "Signature=" + signature;
             // Make the header
-            URL url = new URL("https://" + RESTAPIHOST + canonicalUri);
-            HttpURLConnection con = (HttpURLConnection) url.openConnection();
-            con.setRequestMethod(METHOD);
-            con.setRequestProperty("Host", RESTAPIHOST);
-            con.setRequestProperty("x-amz-date", amzDate);
-            con.setRequestProperty("Content-Type", "application/json");
-            if (credentials.sessionToken != null && !credentials.sessionToken.isBlank()) {
-                con.setRequestProperty("x-amz-security-token", credentials.sessionToken);
-            }
-            con.setRequestProperty("Authorization", authorizationHeader);
-            //Make the body
-            con.setDoOutput(true);
+            HttpURLConnection con = null;
+            try {
+                URL url = new URL("https://" + RESTAPIHOST + canonicalUri);
+                con = (HttpURLConnection) url.openConnection();
+                con.setRequestMethod(METHOD);
+                con.setRequestProperty("Host", RESTAPIHOST);
+                con.setRequestProperty("x-amz-date", amzDate);
+                con.setRequestProperty("Content-Type", "application/json");
+                if (credentials.sessionToken != null && !credentials.sessionToken.isBlank()) {
+                    con.setRequestProperty("x-amz-security-token", credentials.sessionToken);
+                }
+                con.setRequestProperty("Authorization", authorizationHeader);
+                con.setDoOutput(true);
 
-            // Write the request body
-            try (var os = con.getOutputStream()) {
-                byte[] input = requestBody.getBytes(StandardCharsets.UTF_8);
-                os.write(input, 0, input.length);
-            }
-            //Make request and Print the response
-            int responseCode = con.getResponseCode();
-            if (responseCode == HttpURLConnection.HTTP_OK) {
-                String responseBody = new String(con.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-                goneCounts.remove(connections.get(i));
-            } else {
-                System.out.println("Error: " + responseCode + " " + con.getResponseMessage());
-                if (responseCode == HttpURLConnection.HTTP_GONE) {
-                    String connectionId = connections.get(i);
-                    int seen = goneCounts.getOrDefault(connectionId, 0) + 1;
-                    goneCounts.put(connectionId, seen);
-                    if (seen >= 2) {
-                        System.out.println("Connection gone: " + connectionId);
-                        goneCounts.remove(connectionId);
-                        User.removeConnection(connectionId);
-                    } else {
-                        System.out.println("Connection gone (retrying later): " + connectionId);
+                try (var os = con.getOutputStream()) {
+                    byte[] input = requestBody.getBytes(StandardCharsets.UTF_8);
+                    os.write(input, 0, input.length);
+                }
+
+                int responseCode = con.getResponseCode();
+                if (responseCode == HttpURLConnection.HTTP_OK) {
+                    con.getInputStream().readAllBytes();
+                    goneCounts.remove(connectionId);
+                } else {
+                    ServerLog.warn(SCOPE, "ManageConnections response " + responseCode + " " + con.getResponseMessage());
+                    if (responseCode == HttpURLConnection.HTTP_GONE) {
+                        int seen = goneCounts.getOrDefault(connectionId, 0) + 1;
+                        goneCounts.put(connectionId, seen);
+                        if (seen >= 2) {
+                            ServerLog.warn(SCOPE, "Connection gone: " + connectionId);
+                            goneCounts.remove(connectionId);
+                            User.removeConnection(connectionId);
+                        } else {
+                            ServerLog.warn(SCOPE, "Connection gone (retrying later): " + connectionId);
+                        }
+                    }
+                    if (con.getErrorStream() != null) {
+                        String errorBody = new String(con.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
+                        ServerLog.warn(SCOPE, "ManageConnections error body: " + errorBody);
                     }
                 }
-                if (con.getErrorStream() != null) {
-                    String errorBody = new String(con.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
-                    System.out.println("Error body:" + errorBody);
+            } finally {
+                if (con != null) {
+                    con.disconnect();
                 }
             }
         }

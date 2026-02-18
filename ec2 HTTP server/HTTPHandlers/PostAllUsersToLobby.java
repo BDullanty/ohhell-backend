@@ -1,21 +1,26 @@
 package HTTPHandlers;
 
 import GameHandlers.User;
+import org.json.JSONObject;
 
-import java.io.IOException;
-import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 
 public class PostAllUsersToLobby {
+    private static final String SCOPE = "PostAllUsersToLobby";
     
     public static void postAllUsersToLobby(){
         ArrayList<String> lobbyConnections = User.getLobbyConnections();
-        String message = "{\"returnType\": \"users\", \"users\" : "+ User.getUsers()+"}";
+        JSONObject payload = new JSONObject();
+        payload.put("returnType", "users");
+        payload.put("users", User.getUsersObject());
         try {
-            AWSSigner.sendSignedMessage(message,lobbyConnections);
-            System.out.println("Sent "+message+" to lobby players");
+            AWSSigner.sendSignedMessage(payload.toString(),lobbyConnections);
+            ServerLog.info(
+                SCOPE,
+                "Sent users payload to " + lobbyConnections.size() + " lobby connections"
+            );
         } catch (Exception e) {
-            System.out.println("Failed to send message : "+e);
+            ServerLog.error(SCOPE, "Failed posting users payload.", e);
 
         }
     }

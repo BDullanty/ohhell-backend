@@ -1,3 +1,15 @@
+# Build outputs
 ec2 HTTP server/build/
-ec2 HTTP server/ohhell-server.jar
 *.class
+
+# Local deployment artifacts
+ec2 HTTP server/ohhell-server*.jar
+ec2 HTTP server/*.zip
+ec2 HTTP server/*.pid
+ec2 HTTP server/logs/
+ec2-deploy.local.txt
+
+# IDE files
+.idea/
+.vscode/
+*.iml

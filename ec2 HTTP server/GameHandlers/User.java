@@ -1,6 +1,7 @@
 package GameHandlers;
 
 import HTTPHandlers.PostAllUsersToLobby;
+import HTTPHandlers.ServerLog;
 import org.json.JSONObject;
 
 import java.util.ArrayList;
@@ -8,15 +9,10 @@ import java.util.HashMap;
 import java.util.Stack;
 
 public class User extends Player{
-    //Per GameHandler.Player Values
-
-    //Static Values
-    //TODO:Change the new Arraylist to load methods that load from Database.
-    //Expects the string to be conectionID
-    protected static HashMap<String,User> connectionList = new HashMap<>();
-    protected static Stack<User> onlineList = new Stack<>();
-    //Userlist is the entire list of users offline or online, String is sub
-    protected static HashMap<String,User> userList = new HashMap<>();
+    private static final String SCOPE = "User";
+    protected static final HashMap<String,User> connectionList = new HashMap<>();
+    protected static final Stack<User> onlineList = new Stack<>();
+    protected static final HashMap<String,User> userList = new HashMap<>();
     protected String sub;
     protected ArrayList<String> connectionID;
 
@@ -51,9 +47,11 @@ public class User extends Player{
 
 
     private User addConnection(String connectionID) {
+        if (!this.connectionID.contains(connectionID)) {
+            this.connectionID.add(connectionID);
+        }
         User.connectionList.put(connectionID,this);
-        this.connectionID.add(connectionID);
-        System.out.println("ConnectionID " + connectionID+ " added to " + this.connectionID);
+        ServerLog.info(SCOPE, "Connection " + connectionID + " mapped to " + getUsername());
         return this;
     }
     public String getSub() {
@@ -61,7 +59,7 @@ public class User extends Player{
     }
 
     public String getUsername() {
-        return username;
+        return super.getUsername();
     }
 
 
@@ -83,7 +81,9 @@ public class User extends Player{
 
     public static void addUserOnline(User p){
         if(p==null) throw new IllegalArgumentException("Player was null");
-        if(onlineList.contains(p)) System.out.println("Player was already online.");
+        if(onlineList.contains(p)) {
+            ServerLog.info(SCOPE, p.getUsername() + " already marked online.");
+        }
         else{
             if (p.gameID == -1) {
                 p.state = State.LOBBY;
@@ -95,35 +95,41 @@ public class User extends Player{
     public static User removeConnection(String connectionID){
         User user = User.connectionList.get(connectionID);
         if (user == null) {
-            System.out.println("ConnectionID " + connectionID + " was not found.");
+            ServerLog.warn(SCOPE, "Unknown connection remove request: " + connectionID);
             return null;
         }
         user.connectionID.remove(connectionID);
         if(user.connectionID.size()==0){
             user.state= State.OFFLINE;
             User.onlineList.remove(user);
-            System.out.println("Player " +user.getUsername()+ " has gone offline.");
-            //TODO:Add in a method call for phantom removal
+            ServerLog.info(SCOPE, "Player " + user.getUsername() + " is now offline.");
             PostAllUsersToLobby.postAllUsersToLobby();
         }
         else{
-            System.out.println("Player " +user.getUsername()+ " now has "+(user.connectionID.size()) + " live connections");
+            ServerLog.info(
+                SCOPE,
+                "Player " + user.getUsername() + " has " + user.connectionID.size() + " live connections"
+            );
         }
         connectionList.remove(connectionID);
         return user;
     }
-    public static String getUsers(){
+    public static JSONObject getUsersObject() {
         JSONObject users = new JSONObject();
         for(int i =0; i < onlineList.size();i++){
             User u = onlineList.elementAt(i);
             users.put(u.getUsername(),u.getState().toString());
         }
-       return users.toString();
+        return users;
+    }
+
+    public static String getUsers(){
+        return getUsersObject().toString();
     }
 
 
     public ArrayList<String> getConnections() {
-        return this.connectionID;
+        return new ArrayList<>(this.connectionID);
     }
 
     public boolean isOnline() {

@@ -2,6 +2,7 @@ package GameHandlers;
 
 import HTTPHandlers.PostGameState;
 import HTTPHandlers.PostUserInfo;
+import HTTPHandlers.ServerLog;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -11,6 +12,7 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 public class Game {
+    private static final String SCOPE = "Game";
     public static int IDTracker = 0;
     private static final int MAX_PLAYERS = 5;
     private static final int MAX_HAND_CARDS = 10;
@@ -49,6 +51,7 @@ public class Game {
     private ScheduledFuture<?> unlockNotifyTimeout;
     private long turnToken;
     private long pauseUntilMs;
+    private long turnDeadlineMs;
     private boolean trickPending;
 
     public Game(User host) {
@@ -64,6 +67,7 @@ public class Game {
         this.lastTrickWinnerIndex = -1;
         this.trickCounter = 0;
         this.pauseUntilMs = 0;
+        this.turnDeadlineMs = 0;
         this.trickPending = false;
         this.scheduler = Executors.newSingleThreadScheduledExecutor();
         addPlayer(host);
@@ -124,6 +128,14 @@ public class Game {
         return trickCounter;
     }
 
+    public synchronized long getTurnDeadlineMs() {
+        return turnDeadlineMs;
+    }
+
+    public synchronized int getTurnTimeLimitSeconds() {
+        return (int) TimeUnit.MILLISECONDS.toSeconds(PLAYER_TURN_DELAY_MS);
+    }
+
     public synchronized void addPlayer(Player p) {
         if (players.size() >= MAX_PLAYERS) {
             return;
@@ -131,7 +143,7 @@ public class Game {
         players.add(p);
         p.setGameID(this.gameID);
         p.setSeatIndex(players.size() - 1);
-        System.out.println("Player added and gameID set to " + p.getGameID());
+        ServerLog.info(SCOPE, "Player added to game " + gameID + ": " + p.getUsername());
     }
 
     public synchronized void removePlayer(Player p) {
@@ -139,19 +151,20 @@ public class Game {
         for (int i = 0; i < players.size(); i++) {
             players.get(i).setSeatIndex(i);
         }
-        System.out.println("Removing player " + p.getUsername() + " from " + this.gameID + " which now has " + this.players.size() + " players remaining.");
+        ServerLog.info(
+            SCOPE,
+            "Removed " + p.getUsername() + " from game " + gameID + ". Remaining players=" + players.size()
+        );
     }
 
     public synchronized void setState(State state) {
-        System.out.println("Changed game state to " + state);
         this.state = state;
-        if (state.equals(State.COMPLETED)) {
-            state = State.LOBBY;
-        }
+        State userState = state.equals(State.COMPLETED) ? State.LOBBY : state;
+        ServerLog.info(SCOPE, "Game " + gameID + " state changed to " + state);
         for (Player player : players) {
             if (player instanceof User) {
                 User user = (User) player;
-                user.setState(state);
+                user.setState(userState);
                 PostUserInfo.postUserInfo(user);
             }
         }
@@ -194,6 +207,7 @@ public class Game {
         pauseUntilMs = 0;
         trickPending = false;
         trickCounter = 0;
+        turnDeadlineMs = 0;
 
         int cardsThisRound = cardsForRound(round);
         dealCards(cardsThisRound);
@@ -400,6 +414,7 @@ public class Game {
 
     private void scheduleTurn() {
         cancelTurnTimeout();
+        turnDeadlineMs = 0;
         if (state != State.INGAME || phase == GamePhase.COMPLETED) {
             return;
         }
@@ -415,9 +430,11 @@ public class Game {
         long token = ++turnToken;
         if (isAutoPlayer(current)) {
             long autoDelay = delay + getTurnDelayMs(current);
+            turnDeadlineMs = now + autoDelay;
             turnTimeout = scheduler.schedule(() -> onAutoTurn(token), autoDelay, TimeUnit.MILLISECONDS);
         } else {
             long timeoutDelay = delay + PLAYER_TURN_DELAY_MS;
+            turnDeadlineMs = now + timeoutDelay;
             turnTimeout = scheduler.schedule(() -> onTurnTimeout(token), timeoutDelay, TimeUnit.MILLISECONDS);
         }
     }
@@ -630,6 +647,7 @@ public class Game {
             turnTimeout.cancel(false);
             turnTimeout = null;
         }
+        turnDeadlineMs = 0;
     }
 
     public synchronized void shutdown() {

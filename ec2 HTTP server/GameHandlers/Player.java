@@ -4,14 +4,14 @@ import java.util.ArrayList;
 
 // Can be a bot or a user.
 public abstract class Player {
-    protected String username;
+    private final String username;
     protected int gameID;
     protected int seatIndex;
     protected ArrayList<Card> hand;
     protected int bet;
     protected int handsWon;
     protected int score;
-    protected Enum state;
+    protected State state;
     protected boolean hasVoted;
 
     public Player(String username) {
@@ -37,7 +37,7 @@ public abstract class Player {
         this.state = state;
     }
 
-    public Enum getState() {
+    public State getState() {
         return this.state;
     }
 

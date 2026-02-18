@@ -12,6 +12,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 public class Connect {
+    private static final String SCOPE = "Connect";
 
     private static final ScheduledExecutorService CONNECT_EXECUTOR = Executors.newSingleThreadScheduledExecutor();
     private static final long POST_CONNECT_DELAY_MS = 250;
@@ -24,11 +25,14 @@ public class Connect {
             //parse exhange into json with info.
             JSONObject infoJson = ExchangeHandler.getInfoJsonFromExchange(exchange);
             User connectingPlayer = getUserFromParsedJWK(infoJson);
+            if (connectingPlayer == null) {
+                throw new IllegalArgumentException("Unable to resolve connecting user.");
+            }
             //If  our jwk does process into a player and sub,
             User.addUserOnline(connectingPlayer);
-            System.out.println("Player " + connectingPlayer.getUsername() + " is now connected.");
+            ServerLog.info(SCOPE, "Player connected: " + connectingPlayer.getUsername());
             //And return our response
-            response = "{\"Player\": \"" + connectingPlayer.getUsername() + "\"}";
+            response = "{\"player\": \"" + connectingPlayer.getUsername() + "\"}";
             exchange.sendResponseHeaders(200, response.getBytes().length);
             OutputStream os = exchange.getResponseBody();
             os.write(response.getBytes());
@@ -37,7 +41,7 @@ public class Connect {
 
         } catch (Exception e) {
             //If we failed to get a player properly, return 400
-            System.out.println("Bad Connect Request.");
+            ServerLog.error(SCOPE, "Bad connect request.", e);
             response = "{\"error\":\"Bad Connect Request\"}";
             exchange.sendResponseHeaders(400, response.getBytes().length);
             OutputStream os = exchange.getResponseBody();
@@ -64,16 +68,20 @@ public class Connect {
                 //Notify everyone that someone connected:
                 PostAllUsersToLobby.postAllUsersToLobby();
             } catch (Exception e) {
-                System.out.println("Post-connect error: " + e);
+                ServerLog.error(SCOPE, "Post-connect actions failed.", e);
             }
         }, POST_CONNECT_DELAY_MS, TimeUnit.MILLISECONDS);
     }
 
     public static User getUserFromParsedJWK(JSONObject infoJson) {
         try {
-            return User.getUser(infoJson.getString("sub"), infoJson.getString("username"), infoJson.getString("connectionID"));
+            return User.getUser(
+                infoJson.getString("sub"),
+                infoJson.getString("username"),
+                infoJson.getString("connectionID")
+            );
         } catch (Exception e) {
-            System.out.println("Error when creating player.." + e);
+            ServerLog.error(SCOPE, "Failed creating user from token payload.", e);
             return null;
         }
 
