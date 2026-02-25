@@ -1,0 +1,16 @@
+EC2 host: 204.236.160.128
+PEM key: C:\Users\bdull\Documents\OH HELL\EC2 Keypair.pem
+
+Built jar:
+C:\Users\bdull\RubymineProjects\ohhell-backend\ec2 HTTP server\ohhell-server-java17-v20.jar
+
+Upload command (PowerShell):
+scp -i "C:\Users\bdull\Documents\OH HELL\EC2 Keypair.pem" "C:\Users\bdull\RubymineProjects\ohhell-backend\ec2 HTTP server\ohhell-server-java17-v20.jar" ec2-user@204.236.160.128:/opt/ohhell/
+
+If the instance user is ubuntu instead of ec2-user, replace ec2-user with ubuntu.
+
+Start server on EC2:
+mkdir -p /opt/ohhell/logs && nohup java -cp "/opt/ohhell/ohhell-server-java17.jar:/opt/ohhell/lib/json-20240303.jar" HTTPHandlers.HTTPServer > /opt/ohhell/logs/server.log 2>&1 < /dev/null & echo $! > /opt/ohhell/ohhell.pid
+
+Stop server on EC2:
+if [ -f /opt/ohhell/ohhell.pid ]; then kill "$(cat /opt/ohhell/ohhell.pid)" && rm -f /opt/ohhell/ohhell.pid; else pkill -f 'HTTPHandlers.HTTPServer' || true; fi

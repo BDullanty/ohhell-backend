@@ -1,5 +1,6 @@
 package HTTPHandlers;
 
+import GameHandlers.GameHandler;
 import GameHandlers.User;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
@@ -124,7 +125,8 @@ public class AWSSigner {
                         if (seen >= 2) {
                             ServerLog.warn(SCOPE, "Connection gone: " + connectionId);
                             goneCounts.remove(connectionId);
-                            User.removeConnection(connectionId);
+                            User disconnectedUser = User.removeConnection(connectionId);
+                            GameHandler.handleUserDisconnected(disconnectedUser);
                         } else {
                             ServerLog.warn(SCOPE, "Connection gone (retrying later): " + connectionId);
                         }

@@ -105,6 +105,16 @@ public class PostGameState {
             playerJson.put("name", player.getUsername());
             playerJson.put("isBot", player instanceof Bot);
             playerJson.put("isOffline", player instanceof User && !((User) player).isOnline());
+            if (player instanceof User) {
+                playerJson.put("cardBack", ((User) player).getCardBack());
+                playerJson.put("cardFront", ((User) player).getCardFront());
+            } else if (player instanceof Bot) {
+                playerJson.put("cardBack", ((Bot) player).getCardBack());
+                playerJson.put("cardFront", ((Bot) player).getCardFront());
+            } else {
+                playerJson.put("cardBack", User.defaultCardBackKey());
+                playerJson.put("cardFront", User.defaultCardFrontKey());
+            }
             playerJson.put("bet", player.hasPlacedBet() ? player.getBet() : JSONObject.NULL);
             playerJson.put("handsWon", player.getHandsWon());
             playerJson.put("score", player.getScore());

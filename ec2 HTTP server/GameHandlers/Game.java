@@ -5,7 +5,10 @@ import HTTPHandlers.PostUserInfo;
 import HTTPHandlers.ServerLog;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -22,11 +25,17 @@ public class Game {
     private static final long BOT_TURN_DELAY_MS = 2_000;
     private static final long PLAYER_TURN_DELAY_MS = 30_000;
     private static final long OFFLINE_BOT_DELAY_MS = 10_000;
-    private static final long BOT_ONLY_END_DELAY_MS = 90_000;
+    private static final long ALL_PLAYERS_DISCONNECTED_END_DELAY_MS = TimeUnit.MINUTES.toMillis(3);
     private static final long TRICK_GLOW_MS = 2_000;
     private static final long TRICK_SWIPE_MS = 650;
     private static final long TRICK_PAUSE_MS = TRICK_GLOW_MS + TRICK_SWIPE_MS;
     private static final long FINAL_CARD_DELAY_MS = 2_000;
+    private static final String[] BOT_NAME_PREFIXES = {
+        "Iron", "Shade", "Silver", "Raven", "Frost", "Bluff", "Cipher", "Dust", "Echo", "Nova"
+    };
+    private static final String[] BOT_NAME_SUFFIXES = {
+        "Fox", "Skull", "King", "Jack", "Spark", "Vale", "Drift", "Talon", "Glyph", "Crow"
+    };
 
     private final int gameID;
     private final ArrayList<Player> players;
@@ -137,6 +146,18 @@ public class Game {
     }
 
     public synchronized void addPlayer(Player p) {
+        if (p == null) {
+            return;
+        }
+        if (players.contains(p)) {
+            p.setGameID(this.gameID);
+            p.setSeatIndex(players.indexOf(p));
+            ServerLog.warn(
+                SCOPE,
+                "Skipped duplicate add for player " + p.getUsername() + " in game " + gameID
+            );
+            return;
+        }
         if (players.size() >= MAX_PLAYERS) {
             return;
         }
@@ -155,6 +176,35 @@ public class Game {
             SCOPE,
             "Removed " + p.getUsername() + " from game " + gameID + ". Remaining players=" + players.size()
         );
+    }
+
+    public synchronized boolean replaceUserWithBot(User user) {
+        if (user == null || state != State.INGAME) {
+            return false;
+        }
+        int index = players.indexOf(user);
+        if (index < 0) {
+            return false;
+        }
+
+        Bot replacement = new Bot(generateBotName());
+        replacement.setGameID(gameID);
+        replacement.setSeatIndex(index);
+        replacement.setHand(new ArrayList<>(user.getHand()));
+        replacement.setBet(user.getBet());
+        replacement.handsWon = user.getHandsWon();
+        replacement.score = user.getScore();
+        replacement.hasVoted = user.hasVoted();
+        replacement.setCardBack(user.getCardBack());
+        replacement.setCardFront(user.getCardFront());
+
+        user.getHand().clear();
+        players.set(index, replacement);
+        ServerLog.info(
+            SCOPE,
+            "Replaced forfeiting user " + user.getUsername() + " with " + replacement.getUsername() + " in game " + gameID
+        );
+        return true;
     }
 
     public synchronized void setState(State state) {
@@ -188,10 +238,49 @@ public class Game {
 
     private void fillBots() {
         int count = players.size();
+        String botCardBack = preferredBotCardBack();
+        String botCardFront = preferredBotCardFront();
         for (int i = count; i < MAX_PLAYERS; i++) {
-            Bot bot = new Bot("Bot " + (i + 1));
+            Bot bot = new Bot(generateBotName());
+            bot.setCardBack(botCardBack);
+            bot.setCardFront(botCardFront);
             addPlayer(bot);
         }
+    }
+
+    private String generateBotName() {
+        Set<String> takenNames = new HashSet<>();
+        for (Player player : players) {
+            takenNames.add(player.getUsername());
+        }
+        ThreadLocalRandom random = ThreadLocalRandom.current();
+        for (int attempt = 0; attempt < 32; attempt++) {
+            String candidate = BOT_NAME_PREFIXES[random.nextInt(BOT_NAME_PREFIXES.length)]
+                + " "
+                + BOT_NAME_SUFFIXES[random.nextInt(BOT_NAME_SUFFIXES.length)];
+            if (!takenNames.contains(candidate)) {
+                return candidate;
+            }
+        }
+        return "Bot " + (players.size() + 1);
+    }
+
+    private String preferredBotCardBack() {
+        for (Player player : players) {
+            if (player instanceof User) {
+                return ((User) player).getCardBack();
+            }
+        }
+        return User.defaultCardBackKey();
+    }
+
+    private String preferredBotCardFront() {
+        for (Player player : players) {
+            if (player instanceof User) {
+                return ((User) player).getCardFront();
+            }
+        }
+        return User.defaultCardFrontKey();
     }
 
     private void startRound() {
@@ -678,23 +767,55 @@ public class Game {
         if (state != State.INGAME) {
             return;
         }
-        boolean anyOnline = false;
-        for (Player player : players) {
-            if (player instanceof User) {
-                if (((User) player).isOnline()) {
-                    anyOnline = true;
-                    break;
+        if (hasOnlineHuman()) {
+            if (botOnlyTimeout != null) {
+                botOnlyTimeout.cancel(false);
+                botOnlyTimeout = null;
+                ServerLog.info(
+                    SCOPE,
+                    "Cleared disconnected game-end timer for game " + gameID + " after a user reconnected."
+                );
+            }
+            return;
+        }
+        if (botOnlyTimeout != null) {
+            return;
+        }
+        botOnlyTimeout = scheduler.schedule(() -> {
+            synchronized (this) {
+                botOnlyTimeout = null;
+                if (state != State.INGAME) {
+                    return;
                 }
+                if (hasOnlineHuman()) {
+                    return;
+                }
+                ServerLog.info(
+                    SCOPE,
+                    "All users disconnected for 3 minutes in game " + gameID + ". Ending game."
+                );
+                GameHandler.end(this);
+            }
+        }, ALL_PLAYERS_DISCONNECTED_END_DELAY_MS, TimeUnit.MILLISECONDS);
+        ServerLog.info(
+            SCOPE,
+            "Scheduled disconnected game-end timer for game " + gameID + " in "
+                + TimeUnit.MILLISECONDS.toSeconds(ALL_PLAYERS_DISCONNECTED_END_DELAY_MS)
+                + " seconds."
+        );
+    }
+
+    public synchronized boolean hasHumanPlayers() {
+        for (Player player : players) {
+            if (player instanceof User && ((User) player).getGameID() == gameID) {
+                return true;
             }
         }
-        if (!anyOnline) {
-            if (botOnlyTimeout == null || botOnlyTimeout.isDone()) {
-                botOnlyTimeout = scheduler.schedule(() -> GameHandler.end(this), BOT_ONLY_END_DELAY_MS, TimeUnit.MILLISECONDS);
-            }
-        } else if (botOnlyTimeout != null) {
-            botOnlyTimeout.cancel(false);
-            botOnlyTimeout = null;
-        }
+        return false;
+    }
+
+    public synchronized boolean hasOnlineHumanPlayers() {
+        return hasOnlineHuman();
     }
 
     private void notifyState() {
@@ -736,7 +857,11 @@ public class Game {
 
     private boolean hasOnlineHuman() {
         for (Player player : players) {
-            if (player instanceof User && ((User) player).isOnline()) {
+            if (
+                player instanceof User
+                    && ((User) player).getGameID() == gameID
+                    && ((User) player).isOnline()
+            ) {
                 return true;
             }
         }

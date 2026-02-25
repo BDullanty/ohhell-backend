@@ -30,6 +30,9 @@ public class HTTPServer {
         server.createContext("/VoteStart", new StartGameHandler());
         server.createContext("/PlayCard", new PlayCardHandler());
         server.createContext("/Bet", new BetHandler());
+        server.createContext("/ForfeitGame", new ForfeitGameHandler());
+        server.createContext("/SetCardBack", new SetCardBackHandler());
+        server.createContext("/SetCardFront", new SetCardFrontHandler());
         server.setExecutor(null);
         server.start();
         ServerLog.info(SCOPE, "HTTP server started on port 8080");
@@ -71,6 +74,34 @@ public class HTTPServer {
 
     private static int getBet(JSONObject infoJson) {
         return infoJson.optInt("bet", -1);
+    }
+
+    private static String getCardBack(JSONObject infoJson) {
+        String cardBack = infoJson.optString("cardBack", "");
+        if (cardBack.isBlank()) {
+            cardBack = infoJson.optString("cardBackKey", "");
+        }
+        if (cardBack.isBlank()) {
+            cardBack = infoJson.optString("back", "");
+        }
+        if (cardBack.isBlank()) {
+            cardBack = infoJson.optString("deckBack", "");
+        }
+        return cardBack;
+    }
+
+    private static String getCardFront(JSONObject infoJson) {
+        String cardFront = infoJson.optString("cardFront", "");
+        if (cardFront.isBlank()) {
+            cardFront = infoJson.optString("cardFrontKey", "");
+        }
+        if (cardFront.isBlank()) {
+            cardFront = infoJson.optString("front", "");
+        }
+        if (cardFront.isBlank()) {
+            cardFront = infoJson.optString("deckFront", "");
+        }
+        return cardFront;
     }
 
     static class ConnectHandler implements HttpHandler {
@@ -124,6 +155,81 @@ public class HTTPServer {
             } catch (Exception e) {
                 ServerLog.error(SCOPE, "Bet request failed.", e);
                 sendJson(exchange, 400, errorJson("Bad bet request."));
+            }
+        }
+    }
+
+    static class ForfeitGameHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            try {
+                JSONObject infoJson = getInfoJsonFromExchange(exchange);
+                User user = requireUser(infoJson);
+                GameHandler.forfeitUser(user);
+                JSONObject response = new JSONObject();
+                response.put("returnType", "ack");
+                response.put("action", "ForfeitGame");
+                response.put("status", "received");
+                sendJson(exchange, 200, response);
+            } catch (Exception e) {
+                ServerLog.error(SCOPE, "ForfeitGame request failed.", e);
+                sendJson(exchange, 400, errorJson("Bad forfeit request."));
+            }
+        }
+    }
+
+    static class SetCardBackHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            try {
+                JSONObject infoJson = getInfoJsonFromExchange(exchange);
+                User user = requireUser(infoJson);
+                String requestedCardBack = getCardBack(infoJson);
+                user.setCardBack(requestedCardBack);
+
+                JSONObject response = new JSONObject();
+                response.put("returnType", "ack");
+                response.put("action", "SetCardBack");
+                response.put("status", "received");
+                sendJson(exchange, 200, response);
+
+                PostUserInfo.postUserInfo(user);
+                PostAllUsersToLobby.postAllUsersToLobby();
+                Game game = GameHandler.getGame(user.getGameID());
+                if (game != null) {
+                    PostGameState.postGameState(game);
+                }
+            } catch (Exception e) {
+                ServerLog.error(SCOPE, "SetCardBack request failed.", e);
+                sendJson(exchange, 400, errorJson("Bad card back request."));
+            }
+        }
+    }
+
+    static class SetCardFrontHandler implements HttpHandler {
+        @Override
+        public void handle(HttpExchange exchange) throws IOException {
+            try {
+                JSONObject infoJson = getInfoJsonFromExchange(exchange);
+                User user = requireUser(infoJson);
+                String requestedCardFront = getCardFront(infoJson);
+                user.setCardFront(requestedCardFront);
+
+                JSONObject response = new JSONObject();
+                response.put("returnType", "ack");
+                response.put("action", "SetCardFront");
+                response.put("status", "received");
+                sendJson(exchange, 200, response);
+
+                PostUserInfo.postUserInfo(user);
+                PostAllUsersToLobby.postAllUsersToLobby();
+                Game game = GameHandler.getGame(user.getGameID());
+                if (game != null) {
+                    PostGameState.postGameState(game);
+                }
+            } catch (Exception e) {
+                ServerLog.error(SCOPE, "SetCardFront request failed.", e);
+                sendJson(exchange, 400, errorJson("Bad card front request."));
             }
         }
     }
@@ -210,6 +316,9 @@ public class HTTPServer {
                 if (requestedGame.getPlayers().size() == 5) {
                     throw new IllegalStateException("Game is full.");
                 }
+                if (user.hasForfeitedGame(requestedGame.getGameID())) {
+                    throw new IllegalStateException("Cannot rejoin a forfeited game.");
+                }
 
                 if (user.getGameID() != -1) {
                     Game oldGame = GameHandler.getGame(user.getGameID());
@@ -218,7 +327,10 @@ public class HTTPServer {
                         GameHandler.end(oldGame);
                     }
                 }
-                GameHandler.addUserToGame(user, requestedGame.getGameID());
+                boolean joined = GameHandler.addUserToGame(user, requestedGame.getGameID());
+                if (!joined) {
+                    throw new IllegalStateException("Game join was rejected.");
+                }
                 ServerLog.info(
                     SCOPE,
                     String.format("User %s joined game %d", user.getUsername(), requestedGame.getGameID())

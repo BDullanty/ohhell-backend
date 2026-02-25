@@ -126,6 +126,9 @@ Routes and HTTP integrations (port 8080):
 - `VoteStart` -> `http://<ec2-ip>:8080/VoteStart`
 - `Bet` -> `http://<ec2-ip>:8080/Bet`
 - `PlayCard` -> `http://<ec2-ip>:8080/PlayCard`
+- `ForfeitGame` -> `http://<ec2-ip>:8080/ForfeitGame`
+- `SetCardBack` -> `http://<ec2-ip>:8080/SetCardBack`
+- `SetCardFront` -> `http://<ec2-ip>:8080/SetCardFront`
 - `ListPlayers` -> `http://<ec2-ip>:8080/ListPlayers` (optional)
 
 Use the request/response templates in `*.txt`, including:
