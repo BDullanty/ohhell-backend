@@ -30,11 +30,11 @@ public class Game {
     private static final long TRICK_SWIPE_MS = 650;
     private static final long TRICK_PAUSE_MS = TRICK_GLOW_MS + TRICK_SWIPE_MS;
     private static final long FINAL_CARD_DELAY_MS = 2_000;
-    private static final String[] BOT_NAME_PREFIXES = {
-        "Iron", "Shade", "Silver", "Raven", "Frost", "Bluff", "Cipher", "Dust", "Echo", "Nova"
-    };
-    private static final String[] BOT_NAME_SUFFIXES = {
-        "Fox", "Skull", "King", "Jack", "Spark", "Vale", "Drift", "Talon", "Glyph", "Crow"
+    private static final String[] BOT_FIRST_NAMES = {
+        "Ava", "Mia", "Nora", "Lena", "Sofia", "Emma", "Olivia", "Hazel",
+        "Amelia", "Aria", "Ivy", "Lucy", "Chloe", "Zoey", "Noah", "Liam",
+        "Ethan", "Mason", "Lucas", "Owen", "Levi", "Caleb", "Isaac", "Eli",
+        "Julian", "Silas", "Asher", "Wyatt", "Jasper", "Miles", "Nolan", "Theo"
     };
 
     private final int gameID;
@@ -254,15 +254,20 @@ public class Game {
             takenNames.add(player.getUsername());
         }
         ThreadLocalRandom random = ThreadLocalRandom.current();
-        for (int attempt = 0; attempt < 32; attempt++) {
-            String candidate = BOT_NAME_PREFIXES[random.nextInt(BOT_NAME_PREFIXES.length)]
-                + " "
-                + BOT_NAME_SUFFIXES[random.nextInt(BOT_NAME_SUFFIXES.length)];
+        for (int attempt = 0; attempt < 64; attempt++) {
+            String candidate = BOT_FIRST_NAMES[random.nextInt(BOT_FIRST_NAMES.length)];
             if (!takenNames.contains(candidate)) {
                 return candidate;
             }
         }
-        return "Bot " + (players.size() + 1);
+        String fallbackBase = BOT_FIRST_NAMES[random.nextInt(BOT_FIRST_NAMES.length)];
+        int suffix = 2;
+        String candidate = fallbackBase + " " + suffix;
+        while (takenNames.contains(candidate)) {
+            suffix++;
+            candidate = fallbackBase + " " + suffix;
+        }
+        return candidate;
     }
 
     private String preferredBotCardBack() {
