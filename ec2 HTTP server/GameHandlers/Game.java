@@ -30,6 +30,11 @@ public class Game {
     private static final long TRICK_SWIPE_MS = 650;
     private static final long TRICK_PAUSE_MS = TRICK_GLOW_MS + TRICK_SWIPE_MS;
     private static final long FINAL_CARD_DELAY_MS = 2_000;
+    private static final long ROUND_DEAL_CARD_STAGGER_MS = 130;
+    private static final long ROUND_DEAL_TRUMP_DELAY_MS = 260;
+    private static final long ROUND_DEAL_TRUMP_FLIP_MS = 760;
+    private static final long ROUND_DEAL_BUFFER_MS = 220;
+    private static final long BET_SUMMARY_PAUSE_MS = 2_400;
     private static final String[] BOT_FIRST_NAMES = {
         "Ava", "Mia", "Nora", "Lena", "Sofia", "Emma", "Olivia", "Hazel",
         "Amelia", "Aria", "Ivy", "Lucy", "Chloe", "Zoey", "Noah", "Liam",
@@ -58,9 +63,15 @@ public class Game {
     private ScheduledFuture<?> botOnlyTimeout;
     private ScheduledFuture<?> trickCompleteTimeout;
     private ScheduledFuture<?> unlockNotifyTimeout;
+    private ScheduledFuture<?> betSummaryTimeout;
     private long turnToken;
     private long pauseUntilMs;
     private long turnDeadlineMs;
+    private long roundDealStartMs;
+    private long roundDealEndMs;
+    private String bidResultStatus;
+    private long bidResultUntilMs;
+    private boolean betSummaryPending;
     private boolean trickPending;
 
     public Game(User host) {
@@ -77,6 +88,11 @@ public class Game {
         this.trickCounter = 0;
         this.pauseUntilMs = 0;
         this.turnDeadlineMs = 0;
+        this.roundDealStartMs = 0;
+        this.roundDealEndMs = 0;
+        this.bidResultStatus = null;
+        this.bidResultUntilMs = 0;
+        this.betSummaryPending = false;
         this.trickPending = false;
         this.scheduler = Executors.newSingleThreadScheduledExecutor();
         addPlayer(host);
@@ -143,6 +159,34 @@ public class Game {
 
     public synchronized int getTurnTimeLimitSeconds() {
         return (int) TimeUnit.MILLISECONDS.toSeconds(PLAYER_TURN_DELAY_MS);
+    }
+
+    public synchronized long getRoundDealStartMs() {
+        return roundDealStartMs;
+    }
+
+    public synchronized long getRoundDealEndMs() {
+        return roundDealEndMs;
+    }
+
+    public synchronized long getRoundDealCardStaggerMs() {
+        return ROUND_DEAL_CARD_STAGGER_MS;
+    }
+
+    public synchronized long getRoundDealTrumpDelayMs() {
+        return ROUND_DEAL_TRUMP_DELAY_MS;
+    }
+
+    public synchronized long getRoundDealTrumpFlipMs() {
+        return ROUND_DEAL_TRUMP_FLIP_MS;
+    }
+
+    public synchronized String getBidResultStatus() {
+        return bidResultStatus;
+    }
+
+    public synchronized long getBidResultUntilMs() {
+        return bidResultUntilMs;
     }
 
     public synchronized void addPlayer(Player p) {
@@ -302,14 +346,26 @@ public class Game {
         trickPending = false;
         trickCounter = 0;
         turnDeadlineMs = 0;
+        bidResultStatus = null;
+        bidResultUntilMs = 0;
+        betSummaryPending = false;
+        if (betSummaryTimeout != null) {
+            betSummaryTimeout.cancel(false);
+            betSummaryTimeout = null;
+        }
 
         int cardsThisRound = cardsForRound(round);
         dealCards(cardsThisRound);
-        if (hasTrumpForRound(round)) {
+        boolean hasTrumpThisRound = hasTrumpForRound(round);
+        if (hasTrumpThisRound) {
             trump = deck.draw();
         } else {
             trump = null;
         }
+        roundDealStartMs = System.currentTimeMillis();
+        roundDealEndMs =
+            roundDealStartMs + computeRoundDealDurationMs(cardsThisRound, hasTrumpThisRound);
+        pauseUntilMs = roundDealEndMs;
         phase = GamePhase.BETTING;
         currentTurnIndex = initiatorIndex;
         lastTrickWinnerIndex = -1;
@@ -329,6 +385,9 @@ public class Game {
 
     public synchronized boolean handleBet(Player player, int bet) {
         if (state != State.INGAME || phase != GamePhase.BETTING) {
+            return false;
+        }
+        if (betSummaryPending) {
             return false;
         }
         if (player == null || player != players.get(currentTurnIndex)) {
@@ -510,6 +569,9 @@ public class Game {
         cancelTurnTimeout();
         turnDeadlineMs = 0;
         if (state != State.INGAME || phase == GamePhase.COMPLETED) {
+            return;
+        }
+        if (betSummaryPending) {
             return;
         }
         if (!hasOnlineHuman()) {
@@ -746,6 +808,10 @@ public class Game {
 
     public synchronized void shutdown() {
         cancelTurnTimeout();
+        if (betSummaryTimeout != null) {
+            betSummaryTimeout.cancel(false);
+            betSummaryTimeout = null;
+        }
         if (trickCompleteTimeout != null) {
             trickCompleteTimeout.cancel(false);
             trickCompleteTimeout = null;
@@ -829,8 +895,8 @@ public class Game {
 
     private void advanceAfterBet() {
         if (allBetsPlaced()) {
-            phase = GamePhase.PLAYING;
             currentTurnIndex = initiatorIndex;
+            scheduleBetSummaryPause();
         } else {
             currentTurnIndex = nextIndex(currentTurnIndex);
         }
@@ -848,6 +914,60 @@ public class Game {
         scheduleTurn();
         scheduleUnlockNotification();
         notifyState();
+    }
+
+    private long computeRoundDealDurationMs(int cardsThisRound, boolean hasTrumpThisRound) {
+        long handDealDuration = Math.max(0, cardsThisRound) * ROUND_DEAL_CARD_STAGGER_MS;
+        long trumpDuration = hasTrumpThisRound ? ROUND_DEAL_TRUMP_DELAY_MS + ROUND_DEAL_TRUMP_FLIP_MS : 0;
+        return handDealDuration + trumpDuration + ROUND_DEAL_BUFFER_MS;
+    }
+
+    private int totalBets() {
+        int total = 0;
+        for (Player player : players) {
+            if (!player.hasPlacedBet()) {
+                continue;
+            }
+            total += player.getBet();
+        }
+        return total;
+    }
+
+    private String resolveBidResultStatus() {
+        int total = totalBets();
+        int dealt = cardsForRound(round);
+        if (total == dealt) {
+            return "EVEN_BID";
+        }
+        if (total > dealt) {
+            return "OVER_BID";
+        }
+        return "UNDER_BID";
+    }
+
+    private void scheduleBetSummaryPause() {
+        betSummaryPending = true;
+        bidResultStatus = resolveBidResultStatus();
+        long now = System.currentTimeMillis();
+        bidResultUntilMs = now + BET_SUMMARY_PAUSE_MS;
+        pauseUntilMs = Math.max(pauseUntilMs, bidResultUntilMs);
+        if (betSummaryTimeout != null) {
+            betSummaryTimeout.cancel(false);
+        }
+        betSummaryTimeout = scheduler.schedule(() -> {
+            synchronized (this) {
+                betSummaryTimeout = null;
+                if (state != State.INGAME || phase != GamePhase.BETTING || !betSummaryPending) {
+                    return;
+                }
+                betSummaryPending = false;
+                bidResultStatus = null;
+                bidResultUntilMs = 0;
+                phase = GamePhase.PLAYING;
+                currentTurnIndex = initiatorIndex;
+                advanceAfterStateChange();
+            }
+        }, BET_SUMMARY_PAUSE_MS, TimeUnit.MILLISECONDS);
     }
 
     private boolean isAutoPlayer(Player player) {

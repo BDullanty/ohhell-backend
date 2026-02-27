@@ -51,6 +51,15 @@ public class PostGameState {
         payload.put("turnTimeLimitSeconds", game.getTurnTimeLimitSeconds());
         long turnDeadlineMs = game.getTurnDeadlineMs();
         payload.put("turnDeadlineMs", turnDeadlineMs > 0 ? turnDeadlineMs : JSONObject.NULL);
+        payload.put("roundDealStartMs", game.getRoundDealStartMs());
+        payload.put("roundDealEndMs", game.getRoundDealEndMs());
+        payload.put("roundDealCardStaggerMs", game.getRoundDealCardStaggerMs());
+        payload.put("roundDealTrumpDelayMs", game.getRoundDealTrumpDelayMs());
+        payload.put("roundDealTrumpFlipMs", game.getRoundDealTrumpFlipMs());
+        String bidResultStatus = game.getBidResultStatus();
+        payload.put("bidResultStatus", bidResultStatus != null ? bidResultStatus : JSONObject.NULL);
+        long bidResultUntilMs = game.getBidResultUntilMs();
+        payload.put("bidResultUntilMs", bidResultUntilMs > 0 ? bidResultUntilMs : JSONObject.NULL);
 
         Card trump = game.getTrump();
         payload.put("trump", trump != null ? trump.getKey() : "");
