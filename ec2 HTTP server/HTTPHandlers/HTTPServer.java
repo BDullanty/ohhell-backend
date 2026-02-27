@@ -361,10 +361,17 @@ public class HTTPServer {
                     throw new IllegalStateException("Game is not in waiting state.");
                 }
                 if (requestingUser.hasVoted()) {
-                    throw new IllegalStateException("User already voted.");
+                    ServerLog.info(
+                        SCOPE,
+                        String.format(
+                            "VoteStart duplicate from %s for game %d (already voted). Rechecking readiness.",
+                            requestingUser.getUsername(),
+                            game.getGameID()
+                        )
+                    );
+                } else {
+                    requestingUser.setVoted();
                 }
-
-                requestingUser.setVoted();
                 boolean everyoneVoted = GameHandler.everyoneVotedStart(game);
                 if (everyoneVoted) {
                     ServerLog.info(
