@@ -30,10 +30,12 @@ public class Game {
     private static final long TRICK_SWIPE_MS = 650;
     private static final long TRICK_PAUSE_MS = TRICK_GLOW_MS + TRICK_SWIPE_MS;
     private static final long FINAL_CARD_DELAY_MS = 2_000;
-    private static final long ROUND_DEAL_CARD_STAGGER_MS = 130;
+    private static final long ROUND_DEAL_CARD_STAGGER_MS = 760;
     private static final long ROUND_DEAL_TRUMP_AFTER_HAND_MS = 260;
+    private static final long ROUND_DEAL_TRUMP_HOLD_MS = 1_000;
+    private static final long ROUND_DEAL_TRUMP_SHAKE_MS = 260;
     private static final long ROUND_DEAL_TRUMP_FLIP_MS = 760;
-    private static final long ROUND_DEAL_BUFFER_MS = 220;
+    private static final long ROUND_DEAL_BUFFER_MS = 120;
     private static final long BET_SUMMARY_PAUSE_MS = 2_400;
     private static final String[] BOT_FIRST_NAMES = {
         "Ava", "Mia", "Nora", "Lena", "Sofia", "Emma", "Olivia", "Hazel",
@@ -181,6 +183,14 @@ public class Game {
 
     public synchronized long getRoundDealTrumpFlipMs() {
         return ROUND_DEAL_TRUMP_FLIP_MS;
+    }
+
+    public synchronized long getRoundDealTrumpHoldMs() {
+        return ROUND_DEAL_TRUMP_HOLD_MS;
+    }
+
+    public synchronized long getRoundDealTrumpShakeMs() {
+        return ROUND_DEAL_TRUMP_SHAKE_MS;
     }
 
     public synchronized String getBidResultStatus() {
@@ -930,7 +940,11 @@ public class Game {
             return handDealDuration + ROUND_DEAL_BUFFER_MS;
         }
         long normalizedTrumpDelay = Math.max(handDealDuration, trumpDelayMs);
-        return normalizedTrumpDelay + ROUND_DEAL_TRUMP_FLIP_MS + ROUND_DEAL_BUFFER_MS;
+        return normalizedTrumpDelay
+            + ROUND_DEAL_TRUMP_HOLD_MS
+            + ROUND_DEAL_TRUMP_SHAKE_MS
+            + ROUND_DEAL_TRUMP_FLIP_MS
+            + ROUND_DEAL_BUFFER_MS;
     }
 
     private int totalBets() {

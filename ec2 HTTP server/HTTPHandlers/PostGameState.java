@@ -55,6 +55,8 @@ public class PostGameState {
         payload.put("roundDealEndMs", game.getRoundDealEndMs());
         payload.put("roundDealCardStaggerMs", game.getRoundDealCardStaggerMs());
         payload.put("roundDealTrumpDelayMs", game.getRoundDealTrumpDelayMs());
+        payload.put("roundDealTrumpHoldMs", game.getRoundDealTrumpHoldMs());
+        payload.put("roundDealTrumpShakeMs", game.getRoundDealTrumpShakeMs());
         payload.put("roundDealTrumpFlipMs", game.getRoundDealTrumpFlipMs());
         String bidResultStatus = game.getBidResultStatus();
         payload.put("bidResultStatus", bidResultStatus != null ? bidResultStatus : JSONObject.NULL);
