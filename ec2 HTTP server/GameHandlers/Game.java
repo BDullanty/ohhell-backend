@@ -31,7 +31,7 @@ public class Game {
     private static final long TRICK_PAUSE_MS = TRICK_GLOW_MS + TRICK_SWIPE_MS;
     private static final long FINAL_CARD_DELAY_MS = 2_000;
     private static final long ROUND_DEAL_CARD_STAGGER_MS = 130;
-    private static final long ROUND_DEAL_TRUMP_DELAY_MS = 260;
+    private static final long ROUND_DEAL_TRUMP_AFTER_HAND_MS = 260;
     private static final long ROUND_DEAL_TRUMP_FLIP_MS = 760;
     private static final long ROUND_DEAL_BUFFER_MS = 220;
     private static final long BET_SUMMARY_PAUSE_MS = 2_400;
@@ -69,6 +69,7 @@ public class Game {
     private long turnDeadlineMs;
     private long roundDealStartMs;
     private long roundDealEndMs;
+    private long roundDealTrumpDelayMs;
     private String bidResultStatus;
     private long bidResultUntilMs;
     private boolean betSummaryPending;
@@ -90,6 +91,7 @@ public class Game {
         this.turnDeadlineMs = 0;
         this.roundDealStartMs = 0;
         this.roundDealEndMs = 0;
+        this.roundDealTrumpDelayMs = 0;
         this.bidResultStatus = null;
         this.bidResultUntilMs = 0;
         this.betSummaryPending = false;
@@ -174,7 +176,7 @@ public class Game {
     }
 
     public synchronized long getRoundDealTrumpDelayMs() {
-        return ROUND_DEAL_TRUMP_DELAY_MS;
+        return roundDealTrumpDelayMs;
     }
 
     public synchronized long getRoundDealTrumpFlipMs() {
@@ -355,8 +357,10 @@ public class Game {
         }
 
         int cardsThisRound = cardsForRound(round);
+        long handDealDuration = Math.max(0, cardsThisRound) * ROUND_DEAL_CARD_STAGGER_MS;
         dealCards(cardsThisRound);
         boolean hasTrumpThisRound = hasTrumpForRound(round);
+        roundDealTrumpDelayMs = hasTrumpThisRound ? handDealDuration + ROUND_DEAL_TRUMP_AFTER_HAND_MS : 0;
         if (hasTrumpThisRound) {
             trump = deck.draw();
         } else {
@@ -364,7 +368,7 @@ public class Game {
         }
         roundDealStartMs = System.currentTimeMillis();
         roundDealEndMs =
-            roundDealStartMs + computeRoundDealDurationMs(cardsThisRound, hasTrumpThisRound);
+            roundDealStartMs + computeRoundDealDurationMs(cardsThisRound, hasTrumpThisRound, roundDealTrumpDelayMs);
         pauseUntilMs = roundDealEndMs;
         phase = GamePhase.BETTING;
         currentTurnIndex = initiatorIndex;
@@ -916,10 +920,17 @@ public class Game {
         notifyState();
     }
 
-    private long computeRoundDealDurationMs(int cardsThisRound, boolean hasTrumpThisRound) {
+    private long computeRoundDealDurationMs(
+        int cardsThisRound,
+        boolean hasTrumpThisRound,
+        long trumpDelayMs
+    ) {
         long handDealDuration = Math.max(0, cardsThisRound) * ROUND_DEAL_CARD_STAGGER_MS;
-        long trumpDuration = hasTrumpThisRound ? ROUND_DEAL_TRUMP_DELAY_MS + ROUND_DEAL_TRUMP_FLIP_MS : 0;
-        return handDealDuration + trumpDuration + ROUND_DEAL_BUFFER_MS;
+        if (!hasTrumpThisRound) {
+            return handDealDuration + ROUND_DEAL_BUFFER_MS;
+        }
+        long normalizedTrumpDelay = Math.max(handDealDuration, trumpDelayMs);
+        return normalizedTrumpDelay + ROUND_DEAL_TRUMP_FLIP_MS + ROUND_DEAL_BUFFER_MS;
     }
 
     private int totalBets() {
